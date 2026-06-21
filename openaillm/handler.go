@@ -1,0 +1,179 @@
+package openaillm
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"aurora-dispatchers/builtin"
+	"aurora-dispatchers/resolution"
+	"capcompute/dispatcher"
+)
+
+var _ builtin.Handler = (*Handler)(nil)
+
+type capabilityConfig struct {
+	defaultModel    string
+	modelPolicy     modelPolicy
+	maxRequestBytes int
+	requireApproval bool
+}
+
+type connectionSettings struct {
+	baseURL        string
+	apiKeyEnv      string
+	apiKeyOptional bool
+	organization   string
+	project        string
+	timeout        string
+	maxRetries     int
+	maxRetriesSet  bool
+	insecureHTTP   bool
+	headers        string
+}
+
+type Handler struct {
+	client       Client
+	capabilities map[string]capabilityConfig
+	connection   connectionSettings
+}
+
+func NewHandler(client Client) *Handler {
+	return &Handler{client: client, capabilities: make(map[string]capabilityConfig)}
+}
+
+func (h *Handler) AddCapability(name string, settings normalizedSettings) {
+	h.capabilities[name] = capabilityConfig{
+		defaultModel:    settings.DefaultModel,
+		modelPolicy:     newModelPolicy(settings.AllowedModels),
+		maxRequestBytes: settings.MaxRequestBytes,
+		requireApproval: requiresApproval(name, settings.Settings),
+	}
+}
+
+func (h *Handler) Handles(name string) bool {
+	_, ok := h.capabilities[name]
+	return ok
+}
+
+func (h *Handler) DispatchCall(ctx context.Context, call dispatcher.Call) (dispatcher.Outcome, error) {
+	capability, ok := h.capabilities[call.Name]
+	if !ok {
+		return dispatcher.Failed("unknown OpenAI-compatible call: " + call.Name), nil
+	}
+	if len(call.Args) > capability.maxRequestBytes {
+		return dispatcher.Failed(fmt.Sprintf("request exceeds %d bytes", capability.maxRequestBytes)), nil
+	}
+
+	switch call.Name {
+	case "openai.chat":
+		return h.dispatchModelRequest(ctx, call, capability, "messages", h.client.Chat)
+	case "openai.responses":
+		return h.dispatchModelRequest(ctx, call, capability, "input", h.client.Responses)
+	case "openai.embeddings":
+		return h.dispatchModelRequest(ctx, call, capability, "input", h.client.Embeddings)
+	case "openai.models.list":
+		return h.dispatchModels(ctx, capability)
+	default:
+		return dispatcher.Failed("unsupported OpenAI-compatible operation: " + call.Name), nil
+	}
+}
+
+func (h *Handler) dispatchModelRequest(
+	ctx context.Context,
+	call dispatcher.Call,
+	capability capabilityConfig,
+	requiredField string,
+	invoke func(context.Context, json.RawMessage) (json.RawMessage, error),
+) (dispatcher.Outcome, error) {
+	payload, outcome := preparePayload(call, capability, requiredField)
+	if outcome != nil {
+		return *outcome, nil
+	}
+	model, _ := payload["model"].(string)
+	if outcome := approval(ctx, capability, fmt.Sprintf("%s using model %s", call.Name, model)); outcome != nil {
+		return *outcome, nil
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return dispatcher.Outcome{}, err
+	}
+	response, err := invoke(ctx, body)
+	return providerResult(ctx, response, err)
+}
+
+func (h *Handler) dispatchModels(ctx context.Context, capability capabilityConfig) (dispatcher.Outcome, error) {
+	if outcome := approval(ctx, capability, "openai.models.list"); outcome != nil {
+		return *outcome, nil
+	}
+	response, err := h.client.Models(ctx)
+	return providerResult(ctx, response, err)
+}
+
+func preparePayload(
+	call dispatcher.Call,
+	capability capabilityConfig,
+	requiredField string,
+) (map[string]any, *dispatcher.Outcome) {
+	decoder := json.NewDecoder(bytes.NewReader(call.Args))
+	decoder.UseNumber()
+	var payload map[string]any
+	if err := decoder.Decode(&payload); err != nil {
+		outcome := dispatcher.Failed(fmt.Sprintf("decode %s: %v", call.Name, err))
+		return nil, &outcome
+	}
+	if payload == nil {
+		outcome := dispatcher.Failed("request must be a JSON object")
+		return nil, &outcome
+	}
+	if stream, ok := payload["stream"].(bool); ok && stream {
+		outcome := dispatcher.Failed("streaming requests are not supported by dispatcher outcomes")
+		return nil, &outcome
+	}
+	if _, ok := payload[requiredField]; !ok {
+		outcome := dispatcher.Failed(requiredField + " is required")
+		return nil, &outcome
+	}
+
+	model, _ := payload["model"].(string)
+	model = strings.TrimSpace(model)
+	if model == "" {
+		model = capability.defaultModel
+	}
+	if model == "" {
+		outcome := dispatcher.Failed("model is required when no default_model is configured")
+		return nil, &outcome
+	}
+	if err := capability.modelPolicy.check(model); err != nil {
+		outcome := dispatcher.Failed(err.Error())
+		return nil, &outcome
+	}
+	payload["model"] = model
+	return payload, nil
+}
+
+func approval(ctx context.Context, capability capabilityConfig, summary string) *dispatcher.Outcome {
+	if !capability.requireApproval {
+		return nil
+	}
+	if resolved, ok := resolution.FromContext(ctx); ok && resolved.Decision == resolution.Approved {
+		return nil
+	}
+	outcome := dispatcher.Yield("Approve: " + strings.TrimSpace(summary))
+	return &outcome
+}
+
+func providerResult(ctx context.Context, response json.RawMessage, err error) (dispatcher.Outcome, error) {
+	if err != nil {
+		if ctx.Err() != nil {
+			return dispatcher.Outcome{}, ctx.Err()
+		}
+		return dispatcher.Failed(err.Error()), nil
+	}
+	if !json.Valid(response) {
+		return dispatcher.Failed("provider returned invalid JSON"), nil
+	}
+	return dispatcher.Result(response), nil
+}
