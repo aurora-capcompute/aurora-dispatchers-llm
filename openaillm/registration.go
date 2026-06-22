@@ -71,6 +71,31 @@ func (Registration) Configure(
 	return nil
 }
 
+func (Registration) IsSubset(name string, parent, child json.RawMessage) error {
+	var parentSettings, childSettings Settings
+	if err := json.Unmarshal(parent, &parentSettings); err != nil {
+		return fmt.Errorf("decode parent settings: %w", err)
+	}
+	if err := json.Unmarshal(child, &childSettings); err != nil {
+		return fmt.Errorf("decode child settings: %w", err)
+	}
+	if parentSettings.BaseURL != "" && childSettings.BaseURL != "" && parentSettings.BaseURL != childSettings.BaseURL {
+		return fmt.Errorf("child base_url %q differs from parent %q", childSettings.BaseURL, parentSettings.BaseURL)
+	}
+	if len(parentSettings.AllowedModels) > 0 {
+		allowed := make(map[string]struct{}, len(parentSettings.AllowedModels))
+		for _, m := range parentSettings.AllowedModels {
+			allowed[m] = struct{}{}
+		}
+		for _, m := range childSettings.AllowedModels {
+			if _, ok := allowed[m]; !ok {
+				return fmt.Errorf("child model %q is not in parent's allowed models", m)
+			}
+		}
+	}
+	return nil
+}
+
 func findOrCreateHandler(config *builtin.Config, settings normalizedSettings) (*Handler, error) {
 	connection := connectionFor(settings)
 	for _, existing := range config.Handlers {
