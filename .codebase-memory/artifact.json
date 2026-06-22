@@ -1,11 +1,11 @@
 {
     "schema_version": 1,
-    "commit": "HEAD",
-    "indexed_at": "2026-06-21T16:37:46Z",
+    "commit": "291af119bc609c5cb624555be3a92127f92c305f",
+    "indexed_at": "2026-06-22T00:15:32Z",
     "project": "home-rob-workspace-cap_aurora-aurora-dispatchers-llm",
-    "nodes": 105,
-    "edges": 314,
-    "original_size": 1572864,
-    "compressed_size": 137985,
-    "compression_level": 9
+    "nodes": 118,
+    "edges": 325,
+    "original_size": 1900544,
+    "compressed_size": 40233,
+    "compression_level": 3
 }
