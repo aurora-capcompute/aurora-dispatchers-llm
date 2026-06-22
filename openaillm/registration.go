@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"aurora-dispatchers/builtin"
+	"aurora-dispatchers/llm"
 	"aurora-dispatchers/registry"
 	"capcompute/dispatcher"
 )
@@ -68,6 +69,9 @@ func (Registration) Configure(
 	}
 	handler.AddCapability(name, normalized)
 	config.Capabilities = append(config.Capabilities, capabilityFor(name, normalized))
+	if name == "openai.chat" && config.LLM == nil {
+		config.LLM = &llmBridge{handler: handler, capability: name}
+	}
 	return nil
 }
 
@@ -154,6 +158,30 @@ func (c failedClient) Embeddings(context.Context, json.RawMessage) (json.RawMess
 }
 func (c failedClient) Models(context.Context) (json.RawMessage, error) {
 	return nil, c.err
+}
+
+type llmBridge struct {
+	handler    *Handler
+	capability string
+}
+
+func (b *llmBridge) Chat(ctx context.Context, request llm.ChatRequest) (llm.ChatResponse, error) {
+	raw, err := json.Marshal(request)
+	if err != nil {
+		return llm.ChatResponse{}, err
+	}
+	outcome, err := b.handler.DispatchCall(ctx, dispatcher.Call{Name: b.capability, Args: raw})
+	if err != nil {
+		return llm.ChatResponse{}, err
+	}
+	if outcome.Kind() != dispatcher.OutcomeResult {
+		return llm.ChatResponse{}, fmt.Errorf("llm dispatch: %s", outcome.Message())
+	}
+	var response llm.ChatResponse
+	if err := json.Unmarshal(outcome.Result(), &response); err != nil {
+		return llm.ChatResponse{}, err
+	}
+	return response, nil
 }
 
 func capabilityFor(name string, settings normalizedSettings) dispatcher.Capability {
