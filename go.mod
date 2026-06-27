@@ -1,10 +1,10 @@
-module aurora-dispatchers-llm
+module github.com/aurora-capcompute/aurora-dispatchers-llm
 
 go 1.26
 
 require (
-	aurora-dispatchers v0.0.0
-	capcompute v0.0.0
+	github.com/aurora-capcompute/aurora-dispatchers v0.0.0-00010101000000-000000000000
+	github.com/aurora-capcompute/capcompute v0.0.0-00010101000000-000000000000
 	github.com/openai/openai-go/v3 v3.41.0
 )
 
@@ -15,6 +15,4 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 )
 
-replace aurora-dispatchers => ../aurora-dispatchers
 
-replace capcompute => ../capcompute
