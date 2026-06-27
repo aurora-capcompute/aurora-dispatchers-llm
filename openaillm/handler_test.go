@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/aurora-capcompute/aurora-dispatchers/resolution"
 	"github.com/aurora-capcompute/capcompute/dispatcher"
 )
 
@@ -53,7 +52,7 @@ func TestChatYieldsByDefaultAndRunsAfterApproval(t *testing.T) {
 		Args: json.RawMessage(`{"messages":[{"role":"user","content":"hello"}]}`),
 	}
 
-	outcome, err := handler.DispatchCall(context.Background(), call)
+	outcome, err := handler.DispatchCall(context.Background(), call, dispatcher.Authorization{})
 	if err != nil {
 		t.Fatalf("dispatch chat: %v", err)
 	}
@@ -64,8 +63,7 @@ func TestChatYieldsByDefaultAndRunsAfterApproval(t *testing.T) {
 		t.Fatal("provider called before approval")
 	}
 
-	ctx := resolution.WithContext(context.Background(), resolution.Resolution{Decision: resolution.Approved})
-	outcome, err = handler.DispatchCall(ctx, call)
+	outcome, err = handler.DispatchCall(context.Background(), call, dispatcher.Authorization{Decision: dispatcher.Approved})
 	if err != nil {
 		t.Fatalf("dispatch approved chat: %v", err)
 	}
@@ -98,7 +96,7 @@ func TestModelPolicyRejectsBeforeProviderCall(t *testing.T) {
 	outcome, err := handler.DispatchCall(context.Background(), dispatcher.Call{
 		Name: "openai.embeddings",
 		Args: json.RawMessage(`{"model":"model-b","input":"hello"}`),
-	})
+	}, dispatcher.Authorization{})
 	if err != nil {
 		t.Fatalf("dispatch embeddings: %v", err)
 	}
@@ -122,7 +120,7 @@ func TestModelsListDoesNotRequireApprovalByDefault(t *testing.T) {
 	outcome, err := handler.DispatchCall(context.Background(), dispatcher.Call{
 		Name: "openai.models.list",
 		Args: json.RawMessage(`{}`),
-	})
+	}, dispatcher.Authorization{})
 	if err != nil {
 		t.Fatalf("dispatch models: %v", err)
 	}
@@ -150,7 +148,7 @@ func TestStreamingIsRejected(t *testing.T) {
 	outcome, err := handler.DispatchCall(context.Background(), dispatcher.Call{
 		Name: "openai.responses",
 		Args: json.RawMessage(`{"input":"hello","stream":true}`),
-	})
+	}, dispatcher.Authorization{})
 	if err != nil {
 		t.Fatalf("dispatch responses: %v", err)
 	}
