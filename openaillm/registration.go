@@ -21,6 +21,8 @@ var validOperations = map[string]struct{}{
 
 type Registration struct{}
 
+func (Registration) IsCognition() bool { return true }
+
 func (Registration) Matches(name string) bool {
 	_, ok := validOperations[name]
 	return ok
