@@ -4,9 +4,9 @@ OpenAI-compatible LLM capabilities for Aurora, implemented with the official
 [`openai-go`](https://github.com/openai/openai-go) SDK.
 
 The dispatcher is provider-neutral at runtime. Configure a base URL, model, and
-API-key environment variable for OpenAI, Azure-compatible gateways, Ollama,
-vLLM, LM Studio, LiteLLM, or another server that implements the relevant
-OpenAI-compatible endpoint.
+API key for OpenAI, Azure-compatible gateways, Ollama, vLLM, LM Studio,
+LiteLLM, or another server that implements the relevant OpenAI-compatible
+endpoint.
 
 ## Capabilities
 
@@ -24,7 +24,7 @@ Each operation is an independent manifest capability:
       "name": "openai.chat",
       "settings": {
         "base_url": "https://llm.example.com/v1",
-        "api_key_env": "LLM_API_KEY",
+        "api_key": "<resolved-at-dispatch-time>",
         "default_model": "provider/model",
         "allowed_models": ["provider/model"],
         "require_approval": false
@@ -34,7 +34,7 @@ Each operation is an independent manifest capability:
       "name": "openai.models.list",
       "settings": {
         "base_url": "https://llm.example.com/v1",
-        "api_key_env": "LLM_API_KEY"
+        "api_key": "<resolved-at-dispatch-time>"
       }
     }
   ]
@@ -48,8 +48,8 @@ Set `require_approval` explicitly on each capability to override the default.
 ## Settings
 
 - `base_url`: API root including `/v1`; defaults to OpenAI.
-- `api_key_env`: environment variable containing the API key; defaults to
-  `OPENAI_API_KEY`. The secret itself is never stored in the manifest.
+- `api_key`: API key value, resolved from the `SettingValue` ADT at channel
+  start by `Provider.Warmup` — never read from environment variables.
 - `default_model`: model used when a request omits `model`.
 - `allowed_models`: exact model IDs permitted for this capability; empty allows
   all models.
@@ -58,8 +58,8 @@ Set `require_approval` explicitly on each capability to override the default.
 - `timeout`: complete request timeout as a Go duration, such as `2m`.
 - `max_retries`: SDK retry count; defaults to 2.
 - `allow_insecure_http`: permits plain HTTP only for loopback hosts.
-- `headers_from_env`: maps HTTP header names to environment variables. This
-  supports compatible gateways without embedding credentials in manifests.
+- `headers`: static HTTP headers to include on every request (map of name →
+  value). Use the `SettingValue` ADT to seal sensitive header values.
 - `require_approval`: per-capability approval override.
 
 All capabilities configured into one Aurora dispatcher instance must use the

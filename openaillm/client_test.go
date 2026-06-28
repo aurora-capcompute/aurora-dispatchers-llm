@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 )
 
@@ -39,14 +38,12 @@ func TestSDKClientUsesCompatibleEndpointsAndHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	t.Setenv("TEST_LLM_KEY", "test-key")
-	t.Setenv("TEST_TENANT", "tenant-a")
 	t.Setenv("OPENAI_CUSTOM_HEADERS", "X-Leaked: yes")
 	settings, err := normalizeSettings(Settings{
 		BaseURL:           server.URL + "/v1",
 		AllowInsecureHTTP: true,
-		APIKeyEnv:         "TEST_LLM_KEY",
-		HeadersFromEnv:    map[string]string{"X-Gateway-Tenant": "TEST_TENANT"},
+		APIKey:            "test-key",
+		Headers:           map[string]string{"X-Gateway-Tenant": "tenant-a"},
 	})
 	if err != nil {
 		t.Fatalf("settings: %v", err)
@@ -66,9 +63,8 @@ func TestSDKClientUsesCompatibleEndpointsAndHeaders(t *testing.T) {
 	}
 }
 
-func TestAPIKeyMustComeFromConfiguredEnvironment(t *testing.T) {
-	_ = os.Unsetenv("MISSING_LLM_KEY")
-	settings, err := normalizeSettings(Settings{APIKeyEnv: "MISSING_LLM_KEY"})
+func TestAPIKeyRequiredUnlessOptional(t *testing.T) {
+	settings, err := normalizeSettings(Settings{})
 	if err != nil {
 		t.Fatalf("settings: %v", err)
 	}

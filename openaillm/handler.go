@@ -22,7 +22,7 @@ type capabilityConfig struct {
 
 type connectionSettings struct {
 	baseURL        string
-	apiKeyEnv      string
+	apiKey         string
 	apiKeyOptional bool
 	organization   string
 	project        string

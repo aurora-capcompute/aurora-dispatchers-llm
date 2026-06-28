@@ -122,14 +122,14 @@ func connectionFor(settings normalizedSettings) connectionSettings {
 	if maxRetriesSet {
 		maxRetries = *settings.MaxRetries
 	}
-	headers := make([]string, 0, len(settings.HeadersFromEnv))
-	for header, envName := range settings.HeadersFromEnv {
-		headers = append(headers, header+"="+envName)
+	headers := make([]string, 0, len(settings.Headers))
+	for header, value := range settings.Headers {
+		headers = append(headers, header+"="+value)
 	}
 	sort.Strings(headers)
 	return connectionSettings{
 		baseURL:        settings.BaseURL,
-		apiKeyEnv:      settings.APIKeyEnv,
+		apiKey:         settings.APIKey,
 		apiKeyOptional: settings.APIKeyOptional,
 		organization:   settings.Organization,
 		project:        settings.Project,

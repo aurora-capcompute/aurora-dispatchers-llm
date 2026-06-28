@@ -13,19 +13,15 @@ import (
 
 const (
 	defaultBaseURL         = "https://api.openai.com/v1"
-	defaultAPIKeyEnv       = "OPENAI_API_KEY"
 	defaultTimeout         = 2 * time.Minute
 	defaultMaxRequestBytes = 1 << 20
 )
 
-var (
-	envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	headerPattern  = regexp.MustCompile(`^[!#$%&'*+\-.^_` + "`" + `|~0-9A-Za-z]+$`)
-)
+var headerPattern = regexp.MustCompile(`^[!#$%&'*+\-.^_` + "`" + `|~0-9A-Za-z]+$`)
 
 type Settings struct {
 	BaseURL           string            `json:"base_url,omitempty"`
-	APIKeyEnv         string            `json:"api_key_env,omitempty"`
+	APIKey            string            `json:"api_key,omitempty"`
 	APIKeyOptional    bool              `json:"api_key_optional,omitempty"`
 	DefaultModel      string            `json:"default_model,omitempty"`
 	AllowedModels     []string          `json:"allowed_models,omitempty"`
@@ -35,7 +31,7 @@ type Settings struct {
 	MaxRetries        *int              `json:"max_retries,omitempty"`
 	MaxRequestBytes   int               `json:"max_request_bytes,omitempty"`
 	AllowInsecureHTTP bool              `json:"allow_insecure_http,omitempty"`
-	HeadersFromEnv    map[string]string `json:"headers_from_env,omitempty"`
+	Headers           map[string]string `json:"headers,omitempty"`
 	RequireApproval   *bool             `json:"require_approval,omitempty"`
 }
 
@@ -51,14 +47,6 @@ func normalizeSettings(settings Settings) (normalizedSettings, error) {
 	}
 	if err := validateBaseURL(settings.BaseURL, settings.AllowInsecureHTTP); err != nil {
 		return normalizedSettings{}, err
-	}
-
-	settings.APIKeyEnv = strings.TrimSpace(settings.APIKeyEnv)
-	if settings.APIKeyEnv == "" {
-		settings.APIKeyEnv = defaultAPIKeyEnv
-	}
-	if !envNamePattern.MatchString(settings.APIKeyEnv) {
-		return normalizedSettings{}, fmt.Errorf("invalid api_key_env %q", settings.APIKeyEnv)
 	}
 
 	settings.DefaultModel = strings.TrimSpace(settings.DefaultModel)
@@ -85,23 +73,19 @@ func normalizeSettings(settings Settings) (normalizedSettings, error) {
 		settings.MaxRequestBytes = defaultMaxRequestBytes
 	}
 
-	headers := make(map[string]string, len(settings.HeadersFromEnv))
-	for name, envName := range settings.HeadersFromEnv {
+	headers := make(map[string]string, len(settings.Headers))
+	for name, value := range settings.Headers {
 		name = http.CanonicalHeaderKey(strings.TrimSpace(name))
-		envName = strings.TrimSpace(envName)
 		if !headerPattern.MatchString(name) {
 			return normalizedSettings{}, fmt.Errorf("invalid header name %q", name)
 		}
 		switch name {
 		case "Authorization", "Content-Length", "Host":
-			return normalizedSettings{}, fmt.Errorf("header %q cannot be configured through headers_from_env", name)
+			return normalizedSettings{}, fmt.Errorf("header %q cannot be set via headers", name)
 		}
-		if !envNamePattern.MatchString(envName) {
-			return normalizedSettings{}, fmt.Errorf("invalid environment variable %q for header %q", envName, name)
-		}
-		headers[name] = envName
+		headers[name] = value
 	}
-	settings.HeadersFromEnv = headers
+	settings.Headers = headers
 
 	return normalizedSettings{Settings: settings, timeout: timeout}, nil
 }

@@ -8,7 +8,7 @@ import (
 func TestNormalizeSettingsCleansPolicy(t *testing.T) {
 	settings, err := normalizeSettings(Settings{
 		BaseURL:       "https://llm.example.com/v1/",
-		APIKeyEnv:     " LLM_API_KEY ",
+		APIKey:        "sk-test",
 		AllowedModels: []string{" model-b ", "model-a", "model-a"},
 		Timeout:       "120s",
 	})
@@ -18,8 +18,8 @@ func TestNormalizeSettingsCleansPolicy(t *testing.T) {
 	if settings.BaseURL != "https://llm.example.com/v1" {
 		t.Fatalf("base URL = %q", settings.BaseURL)
 	}
-	if settings.APIKeyEnv != "LLM_API_KEY" {
-		t.Fatalf("API key env = %q", settings.APIKeyEnv)
+	if settings.APIKey != "sk-test" {
+		t.Fatalf("API key = %q", settings.APIKey)
 	}
 	if !reflect.DeepEqual(settings.AllowedModels, []string{"model-a", "model-b"}) {
 		t.Fatalf("allowed models = %#v", settings.AllowedModels)
@@ -66,9 +66,9 @@ func TestPlainHTTPRestrictedToExplicitLoopback(t *testing.T) {
 	}
 }
 
-func TestSensitiveHeadersCannotUseGenericMapping(t *testing.T) {
+func TestSensitiveHeadersCannotBeSet(t *testing.T) {
 	_, err := normalizeSettings(Settings{
-		HeadersFromEnv: map[string]string{"Authorization": "TOKEN"},
+		Headers: map[string]string{"Authorization": "Bearer token"},
 	})
 	if err == nil {
 		t.Fatal("expected Authorization header validation error")

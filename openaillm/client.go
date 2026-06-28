@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/openai/openai-go/v3"
@@ -25,9 +24,8 @@ type sdkClient struct {
 }
 
 func NewClient(settings normalizedSettings) (Client, error) {
-	apiKey, present := os.LookupEnv(settings.APIKeyEnv)
-	if !present && !settings.APIKeyOptional {
-		return nil, fmt.Errorf("required API key environment variable %s is not set", settings.APIKeyEnv)
+	if settings.APIKey == "" && !settings.APIKeyOptional {
+		return nil, fmt.Errorf("api_key is required")
 	}
 
 	httpClient := &http.Client{
@@ -38,7 +36,7 @@ func NewClient(settings normalizedSettings) (Client, error) {
 	}
 	options := []option.RequestOption{
 		option.WithBaseURL(settings.BaseURL),
-		option.WithAPIKey(apiKey),
+		option.WithAPIKey(settings.APIKey),
 		option.WithHTTPClient(httpClient),
 		option.WithOrganization(settings.Organization),
 		option.WithProject(settings.Project),
@@ -46,11 +44,7 @@ func NewClient(settings normalizedSettings) (Client, error) {
 	if settings.MaxRetries != nil {
 		options = append(options, option.WithMaxRetries(*settings.MaxRetries))
 	}
-	for header, envName := range settings.HeadersFromEnv {
-		value, ok := os.LookupEnv(envName)
-		if !ok {
-			return nil, fmt.Errorf("required header environment variable %s is not set", envName)
-		}
+	for header, value := range settings.Headers {
 		options = append(options, option.WithHeader(header, value))
 	}
 	// Construct the generic SDK client with explicit options so unrelated
