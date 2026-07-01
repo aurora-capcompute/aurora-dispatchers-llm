@@ -12,6 +12,9 @@ import (
 	"github.com/aurora-capcompute/capcompute/dispatcher"
 )
 
+// ToolType is the manifest `type` for an OpenAI-compatible cognition tool.
+const ToolType = "core.openaiApi"
+
 var validOperations = map[string]struct{}{
 	"openai.chat":        {},
 	"openai.responses":   {},
@@ -19,19 +22,23 @@ var validOperations = map[string]struct{}{
 	"openai.models.list": {},
 }
 
-type Registration struct{}
-
-func (Registration) IsCognition() bool { return true }
-
-func (Registration) Matches(name string) bool {
-	_, ok := validOperations[name]
-	return ok
+// operationNames returns the fixed `openai.*` operation names this tool exposes,
+// sorted for deterministic capability ordering. These are the names the compiled
+// brain invokes directly; the tool's local manifest name is cosmetic.
+func operationNames() []string {
+	names := make([]string, 0, len(validOperations))
+	for name := range validOperations {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
-func (Registration) Normalize(name string, raw json.RawMessage) (json.RawMessage, error) {
-	if _, ok := validOperations[name]; !ok {
-		return nil, fmt.Errorf("unsupported OpenAI-compatible operation %q", name)
-	}
+type Registration struct{}
+
+func (Registration) Matches(toolType string) bool { return toolType == ToolType }
+
+func (Registration) Normalize(_ string, raw json.RawMessage) (json.RawMessage, error) {
 	var settings Settings
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &settings); err != nil {
@@ -45,14 +52,17 @@ func (Registration) Normalize(name string, raw json.RawMessage) (json.RawMessage
 	return json.Marshal(normalized.Settings)
 }
 
+// Configure publishes the fixed openai.* operations for one core.openaiApi tool.
+// The local name is cosmetic: the brain calls the operations by their ABI names,
+// and the tool is kept off the discoverable menu via the manifest `hidden` flag.
 func (Registration) Configure(
 	_ context.Context,
-	name string,
+	_ string,
 	raw json.RawMessage,
 	_ registry.Services,
 	config *builtin.Config,
 ) error {
-	normalizedRaw, err := (Registration{}).Normalize(name, raw)
+	normalizedRaw, err := (Registration{}).Normalize(ToolType, raw)
 	if err != nil {
 		return err
 	}
@@ -68,32 +78,9 @@ func (Registration) Configure(
 	if err != nil {
 		return err
 	}
-	handler.AddCapability(name, normalized)
-	config.Capabilities = append(config.Capabilities, capabilityFor(name, normalized))
-	return nil
-}
-
-func (Registration) IsSubset(name string, parent, child json.RawMessage) error {
-	var parentSettings, childSettings Settings
-	if err := json.Unmarshal(parent, &parentSettings); err != nil {
-		return fmt.Errorf("decode parent settings: %w", err)
-	}
-	if err := json.Unmarshal(child, &childSettings); err != nil {
-		return fmt.Errorf("decode child settings: %w", err)
-	}
-	if parentSettings.BaseURL != "" && childSettings.BaseURL != "" && parentSettings.BaseURL != childSettings.BaseURL {
-		return fmt.Errorf("child base_url %q differs from parent %q", childSettings.BaseURL, parentSettings.BaseURL)
-	}
-	if len(parentSettings.AllowedModels) > 0 {
-		allowed := make(map[string]struct{}, len(parentSettings.AllowedModels))
-		for _, m := range parentSettings.AllowedModels {
-			allowed[m] = struct{}{}
-		}
-		for _, m := range childSettings.AllowedModels {
-			if _, ok := allowed[m]; !ok {
-				return fmt.Errorf("child model %q is not in parent's allowed models", m)
-			}
-		}
+	for _, op := range operationNames() {
+		handler.AddCapability(op, normalized)
+		config.Capabilities = append(config.Capabilities, capabilityFor(op, normalized))
 	}
 	return nil
 }
